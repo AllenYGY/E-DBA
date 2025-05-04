@@ -1,0 +1,58 @@
+[
+  {
+    "user_in": {
+      "email": "xyz@tech.org",
+      "username": "sysadmin_tech",
+      "password": "Str0ngP@ssw0rd!",
+      "permission_level": 3
+    },
+    "organization_in": {
+      "name": "未来科技研究院",
+      "description": "专注于人工智能与大数据研究的前沿科研机构。",
+      "email_domain": "future-tech-research.org",
+      "verification_document": "base64_encoded_doc_123"
+    }
+  },
+  {
+    "user_in": {
+      "email": "test.user@admin.net",
+      "username": "platform_master",
+      "password": "TopSecret#2025",
+      "permission_level": 2
+    },
+    "organization_in": {
+      "name": "星辰云计算中心",
+      "description": "提供高性能计算资源和云服务的国家级数据中心。",
+      "email_domain": "cloud.starcom.gov",
+      "verification_document": "encoded_document_binary_here"
+    }
+  },
+  {
+    "user_in": {
+      "email": "demo@email.io",
+      "username": "demouser",
+      "password": "Pass1234!",
+      "permission_level": 0
+    },
+    "organization_in": {
+      "name": "示例组织A",
+      "description": "这是一个演示用的组织描述。",
+      "email_domain": "example.demo.org",
+      "verification_document": "dummy_base64_string_for_test"
+    }
+  },
+  {
+    "user_in": {
+      "email": "contact@digilab.ac.cn",
+      "username": "digilab_admin",
+      "password": "LabAdmin@Digital2024",
+      "permission_level": 3
+    },
+    "organization_in": {
+      "name": "数字实验室",
+      "description": "从事数字图像处理及算法建模的创新型研究团队。",
+      "email_domain": "digi.lab.ac.cn",
+      "verification_document": "another_pdf_encoded_string"
+    }
+  }
+]
