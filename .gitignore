@@ -134,3 +134,13 @@ dist
 .yarn/build-state.yml
 .yarn/install-state.gz
 .pnp.*
+
+.DS_Store
+#keep uploads directory structure but ignore all files in it
+uploads/**/*
+
+*.pdf
+
+/test
+
+app/__pycache__/*
