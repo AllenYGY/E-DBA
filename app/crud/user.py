@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from datetime import datetime, timezone, timedelta
 
 from app.crud.base import CRUDBase
-from app.models.user import User, HelpRequest, HelpResponse, UserRole
+from app.models.user import User, Question, QuestionResponse, UserRole
 from app.core.security import get_password_hash, verify_password
 from app.schemas.user import UserCreate, UserUpdate
 
@@ -112,77 +112,81 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
         return user
 
 
-class CRUDHelpRequest(CRUDBase[HelpRequest, Dict[str, Any], Dict[str, Any]]):
-    def get_by_user(self, db: Session, *, user_id: int, skip: int = 0, limit: int = 100) -> List[HelpRequest]:
-        """获取用户的帮助请求"""
-        return db.query(HelpRequest).filter(HelpRequest.user_id == user_id).order_by(HelpRequest.created_at.desc()).offset(skip).limit(limit).all()
+class CRUDQuestion(CRUDBase[Question, Dict[str, Any], Dict[str, Any]]):
+    def get_by_user(self, db: Session, *, user_id: int, skip: int = 0, limit: int = 100) -> List[Question]:
+        """获取用户的问题"""
+        return db.query(Question).filter(Question.user_id == user_id).order_by(Question.created_at.desc()).offset(skip).limit(limit).all()
     
-    def get_unresolved(self, db: Session, *, skip: int = 0, limit: int = 100) -> List[HelpRequest]:
-        """获取未解决的帮助请求"""
-        return db.query(HelpRequest).filter(not HelpRequest.is_resolved ).order_by(HelpRequest.created_at.desc()).offset(skip).limit(limit).all()
+    def get_unresolved(self, db: Session, *, skip: int = 0, limit: int = 100) -> List[Question]:
+        """获取未解决的问题"""
+        return db.query(Question).filter(not Question.is_resolved).order_by(Question.created_at.desc()).offset(skip).limit(limit).all()
     
-    def create_help_request(self, db: Session, *, user_id: int, title: str, content: str) -> HelpRequest:
-        """创建帮助请求"""
-        help_request_data = {
+    def create_question(self, db: Session, *, user_id: int, title: str, description: str, email: str, role: str) -> Question:
+        """创建问题"""
+        question_data = {
             "user_id": user_id,
             "title": title,
-            "content": content,
+            "description": description,
+            "email": email,
+            "role": role,
             "is_resolved": False,
             "is_starred": False,
+            "submitted_at": datetime.now(timezone(timedelta(hours=8))),
             "created_at": datetime.now(timezone(timedelta(hours=8))),
             "updated_at": datetime.now(timezone(timedelta(hours=8)))
         }
         
-        help_request = HelpRequest(**help_request_data)
-        db.add(help_request)
+        question = Question(**question_data)
+        db.add(question)
         db.commit()
-        db.refresh(help_request)
-        return help_request
+        db.refresh(question)
+        return question
     
-    def mark_as_resolved(self, db: Session, *, request_id: int) -> Optional[HelpRequest]:
-        """标记帮助请求为已解决"""
-        help_request = self.get(db, id=request_id)
-        if not help_request:
+    def mark_as_resolved(self, db: Session, *, question_id: int) -> Optional[Question]:
+        """标记问题为已解决"""
+        question = self.get(db, id=question_id)
+        if not question:
             return None
         
-        help_request.is_resolved = True
-        help_request.updated_at = datetime.now(timezone(timedelta(hours=8)))
+        question.is_resolved = True
+        question.updated_at = datetime.now(timezone(timedelta(hours=8)))
         
-        db.add(help_request)
+        db.add(question)
         db.commit()
-        db.refresh(help_request)
-        return help_request
+        db.refresh(question)
+        return question
     
-    def mark_as_starred(self, db: Session, *, request_id: int) -> Optional[HelpRequest]:
-        """标记帮助请求为星标"""
-        help_request = self.get(db, id=request_id)
-        if not help_request:
+    def mark_as_starred(self, db: Session, *, question_id: int) -> Optional[Question]:
+        """标记问题为星标"""
+        question = self.get(db, id=question_id)
+        if not question:
             return None
         
-        help_request.is_starred = True
-        help_request.updated_at = datetime.now(timezone(timedelta(hours=8)))
+        question.is_starred = True
+        question.updated_at = datetime.now(timezone(timedelta(hours=8)))
         
-        db.add(help_request)
+        db.add(question)
         db.commit()
-        db.refresh(help_request)
-        return help_request
+        db.refresh(question)
+        return question
 
 
-class CRUDHelpResponse(CRUDBase[HelpResponse, Dict[str, Any], Dict[str, Any]]):
-    def get_by_request(self, db: Session, *, request_id: int) -> List[HelpResponse]:
-        """获取帮助请求的所有回复"""
-        return db.query(HelpResponse).filter(HelpResponse.help_request_id == request_id).order_by(HelpResponse.created_at.asc()).all()
+class CRUDQuestionResponse(CRUDBase[QuestionResponse, Dict[str, Any], Dict[str, Any]]):
+    def get_by_question(self, db: Session, *, question_id: int) -> List[QuestionResponse]:
+        """获取问题的所有回复"""
+        return db.query(QuestionResponse).filter(QuestionResponse.question_id == question_id).order_by(QuestionResponse.created_at.asc()).all()
     
-    def create_response(self, db: Session, *, request_id: int, responder_id: int, content: str) -> HelpResponse:
-        """创建帮助回复"""
+    def create_response(self, db: Session, *, question_id: int, responder_id: int, content: str) -> QuestionResponse:
+        """创建问题回复"""
         response_data = {
-            "help_request_id": request_id,
+            "question_id": question_id,
             "responder_id": responder_id,
             "content": content,
-            "created_at": datetime.now(timezone(timedelta(hours=8)))
+            "created_at": datetime.now(timezone(timedelta(hours=8))),
+            "updated_at": datetime.now(timezone(timedelta(hours=8)))
         }
         
-        response = HelpResponse(**response_data)
+        response = QuestionResponse(**response_data)
         db.add(response)
         db.commit()
         db.refresh(response)
@@ -190,5 +194,5 @@ class CRUDHelpResponse(CRUDBase[HelpResponse, Dict[str, Any], Dict[str, Any]]):
 
 
 user = CRUDUser(User)
-help_request = CRUDHelpRequest(HelpRequest)
-help_response = CRUDHelpResponse(HelpResponse)
+question = CRUDQuestion(Question)
+question_response = CRUDQuestionResponse(QuestionResponse)

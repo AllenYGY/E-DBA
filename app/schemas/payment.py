@@ -1,12 +1,12 @@
 from datetime import datetime
 from typing import Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 class BankAccountInfo(BaseModel):
-    account_name: str
-    account_number: str
-    bank: str
-    password: str
+    account_name: str = Field("Example account", description="Bank account name")
+    account_number: str = Field("596117071864958", description="Bank account number")
+    bank: str = Field("Example bank", description="Bank name")
+    password: str = Field("123456", description="Bank account password")
 
 class PaymentBase(BaseModel):
     amount: float

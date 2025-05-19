@@ -1,14 +1,16 @@
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone,timedelta
 from pydantic import BaseModel, EmailStr, Field
 
 from app.models.enums import UserRole, PermissionLevel
 
+tz_utc_8 = timezone(timedelta(hours=8))
+
 # Login request schema
 class LoginRequest(BaseModel):
-    """登录请求模型"""
-    email: EmailStr = Field(..., description="用户邮箱")
-    password: str = Field(..., description="用户密码")
+    """Login request model"""
+    email: EmailStr = Field(..., description="User email")
+    password: str = Field(..., description="User password")
 
     class Config:
         json_schema_extra = {
@@ -20,52 +22,43 @@ class LoginRequest(BaseModel):
 
 # 银行账户信息模型
 class BankAccountInfo(BaseModel):
-    bank: str = Field(..., description="银行名称")
-    account_name: str = Field(..., description="银行账户名称")
-    account_number: str = Field(..., description="银行账户号码")
-    password: str = Field(..., description="银行账户密码")
+    bank: str = Field(..., description="Bank name")
+    account_name: str = Field(..., description="Bank account name")
+    account_number: str = Field(..., description="Bank account number")
+    password: str = Field(..., description="Bank account password")
 
 # O-Convener registration request
 class OConvenerRegisterRequest(BaseModel):
-    """组织协调人注册请求模型"""
-    # 用户信息
-    email: EmailStr = Field(..., description="用户邮箱")
-    password: str = Field(..., description="用户密码")
-    username: Optional[str] = Field(None, description="用户名，可选")
+    """O-Convener registration request model"""
+    # User information
+    email: EmailStr = Field(..., description="User email")
+    password: str = Field(..., description="User password")
+    username: str = Field(..., description="User name")
     permission_level: int = 3
     
-    # 组织信息
-    name: str = Field(..., description="组织名称")
-    description: Optional[str] = Field(None, description="组织描述")
-    email_domain: str = Field(..., description="组织邮箱域名")
-    verification_document: str = Field(..., description="组织验证文档的Base64编码字符串")
-    
-    # 银行账户信息
-    bank_account: BankAccountInfo = Field(..., description="银行账户信息")
+    # Organization information
+    name: str = Field(..., description="Organization name")
+    description: Optional[str] = Field(None, description="Organization description")
+    email_domain: str = Field(..., description="Organization email domain")
+    verification_document: str = Field(..., description="Organization verification document Base64 encoded string")
+
 
     class Config:
         json_schema_extra = {
             "example": {
                 "email": "organizer@example.com",
                 "password": "strongpassword123",
-                "username": "org_admin",
-                "permission_level": 1,
+                "username": "organizer",
                 "name": "Example Organization",
                 "description": "This is an example organization",
                 "email_domain": "example.com",
-                "verification_document": "dummy_base64_string_for_test",
-                "bank_account": {
-                    "bank": "中国银行",
-                    "account_name": "张三",
-                    "account_number": "6222021234567890123",
-                    "password": "bankpassword123"
-                }
+                "verification_document": "pdf base64 encoded string",
             }
         }
 
 # Shared properties
 class UserBase(BaseModel):
-    """用户基础信息，所有字段都是可选的"""
+    """User base information, all fields are optional"""    
     email: Optional[str] = None
     username: Optional[str] = None
     is_active: Optional[bool] = True
@@ -76,25 +69,28 @@ class UserBase(BaseModel):
 
 # Properties to receive via API on creation
 class UserCreate(UserBase):
-    """用户创建模型，只包含创建用户时必需的字段和可选字段"""
-    # 必填字段
+    """User create model, only include required fields and optional fields when creating a user"""
+    # Required fields
     email: str
     password: str
     username: str
-    role: UserRole = UserRole.DATA_USER
+    role: UserRole = Field(
+        default=UserRole.DATA_USER,
+        description="User role, optional, default is DATA_USER"
+    )
     permission_level: int = PermissionLevel.PUBLIC_DATA.value
     balance: float = Field(
         default=1000.0,
-        description="用户初始余额（单位：RMB）"
+        description="User initial balance (unit: RMB)"
     )
-    # 可选字段，带默认值
+    # Optional fields, with default values
     organization_id: Optional[int] = Field(
-        None,
-        description="组织ID，可选，默认由系统设置"
+        default=None, # E-DBA 组织ID
+        description="Organization ID, optional, default is None"
     )
     is_active: bool = Field(
         default=True,
-        description="是否激活，可选，默认为True"
+        description="Whether the user is active, optional, default is True"
     )
 
     class Config:
@@ -104,7 +100,8 @@ class UserCreate(UserBase):
                 "password": "strongpassword123",
                 "username": "example_user",
                 "permission_level": 1,
-                "balance": 1000.0
+                "balance": 1000.0,
+                "role": "DATA_USER"
             }
         }
 
@@ -131,4 +128,39 @@ class User(UserInDBBase):
 
 # Additional properties stored in DB
 class UserInDB(UserInDBBase):
-    hashed_password: str 
+    hashed_password: str
+
+# Question 相关 schema
+class QuestionBase(BaseModel):
+    title: str
+    description: str
+
+class QuestionCreate(QuestionBase):
+    pass
+
+class Question(QuestionBase):
+    id: int
+    user_id: int
+    is_resolved: bool
+    is_starred: bool
+    submitted_at: datetime = Field(default_factory=lambda: datetime.now(tz_utc_8))
+    responded_at: Optional[datetime] = None
+    created_at: datetime
+    updated_at: datetime
+    class Config:
+        from_attributes = True
+
+class QuestionResponseBase(BaseModel):
+    content: str
+
+class QuestionResponseCreate(QuestionResponseBase):
+    pass
+
+class QuestionResponse(QuestionResponseBase):
+    id: int
+    question_id: int
+    responder_id: int
+    created_at: datetime
+    updated_at: datetime
+    class Config:
+        from_attributes = True 

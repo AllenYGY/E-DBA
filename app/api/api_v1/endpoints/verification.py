@@ -1,6 +1,6 @@
-from typing import Any, List
+from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 
 from app import models, schemas, crud
@@ -9,17 +9,63 @@ from app.api import deps
 router = APIRouter()
 
 
-@router.get("/pending", response_model=List[schemas.VerificationStatus])
-async def get_pending_verifications(
+@router.get("/by-status", response_model=schemas.VerificationStatusListResponse)
+async def get_verifications_by_status(
+    db: Session = Depends(deps.get_db),
+    skip: int = 0,
+    limit: int = 100,
+    e_admin_status: str = Query(None, description="e_admin_approved status, optional: PENDING、APPROVAL、REJECTION"),
+    senior_status: str = Query(None, description="senior_approved status, optional: PENDING、APPROVAL、REJECTION"),
+    current_user: models.user.User = Depends(deps.get_current_e_admin),
+) -> Any:
+    """根据 e_admin_approved 和 senior_approved 状态筛选验证记录，不传参数时返回全部（需要E-Admin权限）"""
+    query = db.query(models.VerificationStatus)
+    if e_admin_status:
+        query = query.filter(models.VerificationStatus.e_admin_approved == e_admin_status)
+    if senior_status:
+        query = query.filter(models.VerificationStatus.senior_approved == senior_status)
+    total = query.count()
+    verifications = query.offset(skip).limit(limit).all()
+    return {"items": verifications, "total": total}
+
+
+@router.get("/by-e-admin-status", response_model=schemas.VerificationStatusListResponse)
+def get_by_e_admin_status(
+    status: str = Query(None, description="e_admin_approved status, optional: PENDING、APPROVAL、REJECTION"),
     db: Session = Depends(deps.get_db),
     skip: int = 0,
     limit: int = 100,
     current_user: models.user.User = Depends(deps.get_current_e_admin),
 ) -> Any:
-    """获取待审核的组织验证申请列表（需要E-Admin权限）"""
-    verifications = crud.verification_status.get_pending_verifications(db, skip=skip, limit=limit)
-    return verifications
+    """根据e_admin_approved状态获取审核记录（需要E-Admin权限），不传status则返回所有"""
+    if status:
+        total = db.query(models.VerificationStatus).filter(
+            models.VerificationStatus.e_admin_approved == status
+        ).count()
+        verifications = crud.verification_status.get_by_status(db, status=status, skip=skip, limit=limit)
+    else:
+        total = db.query(models.VerificationStatus).count()
+        verifications = crud.verification_status.get_multi(db, skip=skip, limit=limit)
+    return {"items": verifications, "total": total}
 
+@router.get("/by-senior-status", response_model=schemas.VerificationStatusListResponse)
+def get_by_senior_status(
+    status: str = Query(None, description="senior_approved status, optional: PENDING、APPROVAL、REJECTION"),
+    db: Session = Depends(deps.get_db),
+    skip: int = 0,
+    limit: int = 100,
+    current_user: models.user.User = Depends(deps.get_current_senior_e_admin),
+) -> Any:
+    """根据senior_approved状态获取审核记录（需要Senior E-Admin权限），不传status则返回所有"""
+    if status:
+        total = db.query(models.VerificationStatus).filter(
+            models.VerificationStatus.senior_approved == status
+        ).count()
+        verifications = crud.verification_status.get_by_senior_status(db, status=status, skip=skip, limit=limit)
+    else:
+        total = db.query(models.VerificationStatus).count()
+        verifications = crud.verification_status.get_multi(db, skip=skip, limit=limit)
+    return {"items": verifications, "total": total}
 
 @router.get("/{organization_id}", response_model=schemas.VerificationStatus)
 async def get_verification_status(
@@ -32,7 +78,7 @@ async def get_verification_status(
     if not organization:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="组织不存在",
+            detail="Organization not found",
         )
     
     # 检查权限：只有组织成员、组织协调人或管理员可以查看验证状态
@@ -41,14 +87,14 @@ async def get_verification_status(
     ]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="权限不足，无法查看验证状态",
+            detail="Insufficient permissions, cannot view verification status",
         )
     
     verification_status = crud.verification_status.get_by_organization(db, organization_id=organization_id)
     if not verification_status:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="验证状态记录不存在",
+            detail="Verification status record not found",
         )
     
     return verification_status
@@ -137,7 +183,7 @@ def senior_e_admin_review_organization(
         
         # 审核通过后，更新 organization 的 is_verified 字段
         organization = crud.organization.get(db, id=organization_id)
-        if status_in.senior_approved:
+        if status_in.senior_approved == "APPROVAL":
             organization.is_verified = True
         else:
             organization.is_verified = False
@@ -240,7 +286,7 @@ def t_admin_review_organization(
         print("Senior E-admin review updated successfully")
         
         # 审核通过后，更新 organization 的 is_verified 字段
-        if status_in.approved:
+        if status_in.approved == 'APPROVAL':
             organization.is_verified = True
         else:
             organization.is_verified = False

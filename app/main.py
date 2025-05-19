@@ -8,34 +8,34 @@ from app.db.session import engine
 from app.db.base import Base
 from app.db.init_db import init_db
 
-# 创建数据库表
+# Create database tables
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
-    description="教育数据湾区(E-DBA)系统 - 为高等教育机构提供安全、透明、互操作的数据共享平台",
+    description="Education Data Bay Area (E-DBA) System - A secure, transparent, and interoperable data sharing platform for higher education institutions",
     version="1.0.0",
     openapi_url=f"{settings.API_V1_STR}/openapi.json"
 )
 
-# 设置CORS
+# CORS settings
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 在生产环境中应该限制来源
+    allow_origins=["*"],  # In production, origins should be restricted
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# 包含API路由
+# Include API routes
 app.include_router(api_router, prefix=settings.API_V1_STR)
 
-# 挂载静态文件
+# Mount static files
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 @app.get("/")
 async def root():
-    return {"message": "欢迎使用教育数据湾区(E-DBA)系统"}
+    return {"message": "Welcome to the Education Data Bay Area (E-DBA) System"}
 
 
 if __name__ == "__main__":

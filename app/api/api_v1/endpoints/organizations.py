@@ -1,28 +1,40 @@
 from typing import Any, List
 import os
 
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Query
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 
 from app import models, schemas, crud
 from app.api import deps
-from app.core.config import settings
-from datetime import datetime
-from app.api.api_v1.endpoints.bank import bank_auth
+
 
 router = APIRouter()
 
 
-@router.get("/", response_model=List[schemas.Organization])
+@router.get("/", response_model=schemas.OrganizationListResponse)
 async def read_organizations(
     db: Session = Depends(deps.get_db),
     skip: int = 0,
     limit: int = 100,
-    current_user: models.user.User = Depends(deps.get_current_e_admin),
+    search: str = Query(None, description="Search organizations by name, full name, or email domain"),
+    current_user: models.user.User = Depends(deps.get_current_active_user),
 ) -> Any:
-    """获取组织列表（需要E-Admin权限）"""
-    organizations = db.query(models.Organization).offset(skip).limit(limit).all()
-    return organizations
+    """
+    Get organization list , supports pagination and multi-field search
+    """
+    query = db.query(models.Organization)
+    if search:
+        query = query.filter(
+            or_(
+                models.Organization.name.ilike(f"%{search}%"),
+                models.Organization.full_name.ilike(f"%{search}%"),
+                models.Organization.email_domain.ilike(f"%{search}%"),
+            )
+        )
+    total = query.count()
+    organizations = query.offset(skip).limit(limit).all()
+    return {"items": organizations, "total": total}
 
 
 class OrganizationCreateWithBank(schemas.OrganizationCreate):
@@ -31,67 +43,22 @@ class OrganizationCreateWithBank(schemas.OrganizationCreate):
     bank: str
     password: str
 
-
-# @router.post("/register", response_model=schemas.Organization)
-# async def create_organization(
-#     *,
-#     db: Session = Depends(deps.get_db),
-#     organization_in: schemas.OrganizationCreate,
-#     current_user: models.user.User = Depends(deps.get_current_active_user),
-# ) -> Any:
-#     """创建新组织（需要O-Convener权限）"""
-#     # 检查当前用户是否已经是组织协调人
-#     if current_user.role == models.UserRole.O_CONVENER:
-#         raise HTTPException(
-#             status_code=status.HTTP_400_BAD_REQUEST,
-#             detail="您已经是组织协调人，无法再次创建组织",
-#         )
-    
-#     # 创建组织
-#     organization = crud.organization.create_with_convener(
-#         db=db,
-#         obj_in=organization_in,
-#         convener_id=current_user.id
-#     )
-    
-#     # 更新用户的角色为O-Convener
-#     crud.user.update(db, db_obj=current_user, obj_in={"role": models.UserRole.O_CONVENER})
-    
-#     # 更新用户的组织ID
-#     crud.user.update(db, db_obj=current_user, obj_in={"organization_id": organization.id})
-
-#     # 关键：刷新 user 对象，获取最新 organization_id
-#     db.refresh(current_user)
-    
-#     # 记录组织创建日志
-#     crud.log.create_log(
-#         db=db,
-#         user_id=current_user.id,
-#         organization_id=organization.id,
-#         log_type=models.LogType.ORGANIZATION,
-#         action="创建组织",
-#         details=f"用户 {current_user.email} 创建了组织 {organization.name}"
-#     )
-    
-#     return organization
-
-
 @router.get("/my-organization", response_model=schemas.Organization)
 async def read_my_organization(
     db: Session = Depends(deps.get_db),
     current_user: models.user.User = Depends(deps.get_current_active_user),
 ) -> Any:
-    """获取当前用户所属组织信息"""
+    """Get the organization information of the current user"""
     if not current_user.organization_id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="您不属于任何组织",
+            detail="You are not a member of any organization",
         )
     organization = db.query(models.Organization).filter(models.Organization.id == current_user.organization_id).first()
     if not organization:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="组织不存在，无法获得组织信息",
+            detail="Organization not found, cannot get organization information",
         )
     return organization
 
@@ -102,21 +69,21 @@ async def read_organization(
     db: Session = Depends(deps.get_db),
     current_user: models.user.User = Depends(deps.get_current_active_user),
 ) -> Any:
-    """根据ID获取组织信息"""
+    """Get organization information by ID"""
     organization = db.query(models.Organization).filter(models.Organization.id == organization_id).first()
     if not organization:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="组织不存在 ",
+            detail="Organization not found",
         )
     
-    # 检查权限：只有组织成员、组织协调人或管理员可以查看组织信息
+    # Check permission: only organization members, organizers, or admins can view organization information
     if current_user.organization_id != organization_id and current_user.role not in [
         models.UserRole.E_ADMIN, models.UserRole.T_ADMIN, models.UserRole.SENIOR_E_ADMIN
     ]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="权限不足，无法查看其他组织信息",
+            detail="Permission denied, cannot view other organization information",
         )
     
     return organization
@@ -130,27 +97,27 @@ async def update_organization(
     organization_in: schemas.OrganizationUpdate,
     current_user: models.user.User = Depends(deps.get_current_active_user),
 ) -> Any:
-    """更新组织信息"""
+    """update organization information"""
     organization = db.query(models.Organization).filter(models.Organization.id == organization_id).first()
     if not organization:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="组织不存在 ",
+            detail="Organization not found",
         )
     
-    # 检查权限：只有组织协调人或管理员可以更新组织信息
+    # Check permission: only organizers or admins can update organization information
     is_admin = current_user.role in [models.UserRole.E_ADMIN, models.UserRole.T_ADMIN, models.UserRole.SENIOR_E_ADMIN]
     is_convener = current_user.id == organization.convener_id
     
     if not (is_admin or is_convener):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="权限不足，只有组织协调人或管理员可以更新组织信息",
+            detail="Permission denied, only the organizer or admin can update the organization information",
         )
     
-    # 管理员可以更新所有字段，协调人只能更新基本信息
+    # Admins can update all fields, organizers can only update basic information
     if not is_admin:
-        # 移除协调人无权更新的字段
+        # Remove fields that organizers cannot update
         if hasattr(organization_in, "is_verified"):
             delattr(organization_in, "is_verified")
         if hasattr(organization_in, "is_active"):
@@ -160,14 +127,14 @@ async def update_organization(
     
     organization = crud.organization.update(db, db_obj=organization, obj_in=organization_in)
     
-    # 记录组织更新日志
+    # Record organization update log
     crud.log.create_log(
         db=db,
         user_id=current_user.id,
         organization_id=organization.id,
         log_type=models.LogType.ORGANIZATION,
-        action="更新组织信息",
-        details=f"用户 {current_user.email} 更新了组织 {organization.name} 的信息"
+        action="update organization information",
+        details=f"User {current_user.email} updated the information of organization {organization.name}"
     )
     
     return organization
@@ -181,34 +148,34 @@ async def upload_verification_document(
     file: UploadFile = File(...),
     current_user: models.user.User = Depends(deps.get_current_active_user),
 ) -> Any:
-    """上传组织验证文件"""
+    """Upload organization verification document"""
     organization = crud.organization.get(db, id=organization_id)
     if not organization:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="组织不存在",
+            detail="Organization not found",
         )
     
-    # 检查权限：只有组织协调人或管理员可以上传验证文件
+    # Check permission: only organizers or admins can upload verification document
     if current_user.id != organization.convener_id and current_user.role not in [
         models.UserRole.E_ADMIN, models.UserRole.SENIOR_E_ADMIN, models.UserRole.T_ADMIN
     ]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="权限不足，无法上传验证文件",
+            detail="Permission denied, cannot upload verification document",
         )
     
-    # 检查文件类型
+    # Check file type
     if not file.filename.endswith(".pdf"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="只支持PDF格式的文件",
+            detail="Only PDF files are supported",
         )
     
-    # 生成文件存储路径
+    # Generate file storage path
     file_path = f"uploads/verification/{organization_id}_{file.filename}"
     
-    # 自动创建目录
+    # Automatically create directory
     os.makedirs(os.path.dirname(file_path), exist_ok=True)
 
     try:
@@ -218,29 +185,29 @@ async def upload_verification_document(
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"文件保存失败: {str(e)}",
+            detail=f"File saving failed: {str(e)}",
         )
     
-    # 更新组织验证文件路径
+    # Update organization verification document path
     organization = crud.organization.update(
         db,
         db_obj=organization,
         obj_in={"verification_document": file_path}
     )
     
-    # 创建或更新验证状态记录
+    # Create or update verification status record
     verification_status = crud.verification_status.get_by_organization(db, organization_id=organization_id)
     if not verification_status:
         verification_status = crud.verification_status.create_verification_status(db, organization_id=organization_id)
     
-    # 记录文件上传日志
+    # Record file upload log
     crud.log.create_log(
         db=db,
         user_id=current_user.id,
         organization_id=organization.id,
         log_type=models.LogType.ORGANIZATION,
-        action="上传验证文件",
-        details=f"用户 {current_user.email} 为组织 {organization.name} 上传了验证文件"
+        action="Upload verification document",
+        details=f"User {current_user.email} uploaded verification document for organization {organization.name}"
     )
     
     return organization
@@ -254,15 +221,15 @@ async def read_organization_members(
     limit: int = 100,
     current_user: models.user.User = Depends(deps.get_current_active_user),
 ) -> Any:
-    """获取组织成员列表"""
+    """Get organization member list"""
     organization = db.query(models.Organization).filter(models.Organization.id == organization_id).first()
     if not organization:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="组织不存在",
+            detail="Organization not found",
         )
     
-    # 检查权限：只有组织成员、组织协调人或管理员可以查看组织成员
+    # Check permission: only organization members, organizers, or admins can view organization members
     is_admin = current_user.role in [models.UserRole.E_ADMIN, models.UserRole.T_ADMIN, models.UserRole.SENIOR_E_ADMIN]
     is_member = current_user.organization_id == organization_id
     is_convener = current_user.id == organization.convener_id
@@ -270,7 +237,7 @@ async def read_organization_members(
     if not (is_admin or is_member or is_convener):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="权限不足，无法查看组织成员",
+            detail="Permission denied, cannot view organization members",
         )
     
     members = db.query(models.User).filter(models.User.organization_id == organization_id).offset(skip).limit(limit).all()

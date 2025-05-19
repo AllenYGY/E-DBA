@@ -25,14 +25,14 @@ class CRUDPolicy(CRUDBase[Policy, Dict[str, Any], Dict[str, Any]]):
         *, 
         title: str,
         description: Optional[str] = None,
-        file_path: str,
+        file_content: str,
         created_by: int
     ) -> Policy:
         """创建新政策"""
         policy_data = {
             "title": title,
             "description": description,
-            "file_path": file_path,
+            "file_content": file_content,
             "created_by": created_by,
             "is_active": True,
             "created_at": datetime.now(tz_utc_8),
@@ -52,7 +52,7 @@ class CRUDPolicy(CRUDBase[Policy, Dict[str, Any], Dict[str, Any]]):
         policy_id: int,
         title: Optional[str] = None,
         description: Optional[str] = None,
-        file_path: Optional[str] = None,
+        file_content: Optional[str] = None,
         is_active: Optional[bool] = None
     ) -> Optional[Policy]:
         """更新政策信息"""
@@ -65,8 +65,8 @@ class CRUDPolicy(CRUDBase[Policy, Dict[str, Any], Dict[str, Any]]):
             update_data["title"] = title
         if description is not None:
             update_data["description"] = description
-        if file_path is not None:
-            update_data["file_path"] = file_path
+        if file_content is not None:
+            update_data["file_content"] = file_content
         if is_active is not None:
             update_data["is_active"] = is_active
         

@@ -1,6 +1,6 @@
-from app.models.user import User, HelpRequest, HelpResponse, UserRole
+from app.models.user import User,Question,QuestionResponse
 from app.models.organization import Organization
-from app.models.service import Service, ExternalApiConfig, ServiceType
+from app.models.service import Service, ServiceType
 from app.models.course import Course
 from app.models.log import Log, LogType
 from app.models.payment import Payment, Transfer, PaymentStatus
@@ -11,13 +11,12 @@ from app.models.enums import UserRole, PermissionLevel
 
 __all__ = [
     "User",
-    "HelpRequest",
-    "HelpResponse",
+    "Question",
+    "QuestionResponse",
     "UserRole",
     "PermissionLevel",
     "Organization",
     "Service",
-    "ExternalApiConfig",
     "ServiceType",
     "Course",
     "Log",

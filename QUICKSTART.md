@@ -184,29 +184,194 @@ T_ADMIN_EMAIL=tadmin@edba.com
 T_ADMIN_PASSWORD=TAdmin@123
 ```
 
-## 启动应用
+## 部署说明
 
-### 方法一：使用uvicorn（开发环境）
+### 开发环境部署
+
+1. **使用uvicorn（推荐）**
 
 ```bash
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-### 方法二：使用gunicorn（生产环境）
+2. **使用Python直接运行**
 
 ```bash
+python -m app.main
+```
+
+### 生产环境部署
+
+1. **使用gunicorn（推荐）**
+
+```bash
+# 安装gunicorn
+pip install gunicorn
+
+# 启动服务
 gunicorn app.main:app --workers 4 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
 ```
 
-启动后，可以通过浏览器访问：
+2. **使用Docker部署**
 
-- 主页：<http://localhost:8000>
-- API文档：<http://localhost:8000/docs>
-- ReDoc文档：<http://localhost:8000/redoc>
+创建 `Dockerfile`:
+```dockerfile
+FROM python:3.10-slim
 
-## 数据库迁移
+WORKDIR /app
 
-### 初始化数据库
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+CMD ["gunicorn", "app.main:app", "--workers", "4", "--worker-class", "uvicorn.workers.UvicornWorker", "--bind", "0.0.0.0:8000"]
+```
+
+构建和运行Docker容器：
+```bash
+# 构建镜像
+docker build -t edba .
+
+# 运行容器
+docker run -d -p 8000:8000 --name edba edba
+```
+
+3. **使用Docker Compose部署**
+
+创建 `docker-compose.yml`:
+```yaml
+version: '3.8'
+
+services:
+  web:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - MYSQL_SERVER=db
+      - MYSQL_USER=edba
+      - MYSQL_PASSWORD=your_password
+      - MYSQL_DB=edba
+    depends_on:
+      - db
+
+  db:
+    image: mysql:8.0
+    environment:
+      - MYSQL_ROOT_PASSWORD=root_password
+      - MYSQL_DATABASE=edba
+      - MYSQL_USER=edba
+      - MYSQL_PASSWORD=your_password
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+volumes:
+  mysql_data:
+```
+
+启动服务：
+```bash
+docker-compose up -d
+```
+
+## 系统配置
+
+### 环境变量配置
+
+完整的环境变量配置说明：
+
+```python
+# 数据库配置
+MYSQL_SERVER=localhost        # MySQL服务器地址
+MYSQL_USER=your_username     # MySQL用户名
+MYSQL_PASSWORD=your_password # MySQL密码
+MYSQL_DB=edba               # 数据库名
+MYSQL_PORT=3306             # MySQL端口
+
+# 安全配置
+SECRET_KEY=your-secret-key-here           # JWT密钥
+ACCESS_TOKEN_EXPIRE_MINUTES=11520         # 访问令牌过期时间（分钟）
+REFRESH_TOKEN_EXPIRE_DAYS=7               # 刷新令牌过期时间（天）
+ALGORITHM=HS256                          # JWT算法
+
+# 跨域配置
+BACKEND_CORS_ORIGINS=["http://localhost:8000", "http://localhost:3000"]  # 允许的跨域源
+
+# 项目配置
+PROJECT_NAME=E-DBA                        # 项目名称
+DEBUG=True                                # 调试模式
+API_V1_STR=/api/v1                        # API版本前缀
+SERVER_HOST=0.0.0.0                       # 服务器主机
+SERVER_PORT=8000                          # 服务器端口
+
+# 文件上传配置
+UPLOAD_DIR=uploads                        # 上传目录
+MAX_UPLOAD_SIZE=104857600                 # 最大上传大小（字节）
+ALLOWED_EXTENSIONS=["pdf", "doc", "docx"] # 允许的文件类型
+
+# 日志配置
+LOG_LEVEL=INFO                            # 日志级别
+LOG_FORMAT=%(asctime)s - %(name)s - %(levelname)s - %(message)s  # 日志格式
+LOG_DIR=logs                              # 日志目录
+
+# 管理员配置
+E_ADMIN_NAME=eadmin                       # E-Admin用户名
+E_ADMIN_EMAIL=eadmin@edba.com            # E-Admin邮箱
+E_ADMIN_PASSWORD=eadmin@123              # E-Admin密码
+
+SENIOR_E_NAME=senior                      # Senior E-Admin用户名
+SENIOR_E_ADMIN_EMAIL=senior@edba.com     # Senior E-Admin邮箱
+SENIOR_E_ADMIN_PASSWORD=SeniorEAdmin@123 # Senior E-Admin密码
+
+T_ADMIN_NAME=tadmin                       # T-Admin用户名
+T_ADMIN_EMAIL=tadmin@edba.com            # T-Admin邮箱
+T_ADMIN_PASSWORD=TAdmin@123              # T-Admin密码
+
+# 支付配置
+PAYMENT_PROVIDER=bank_transfer           # 支付提供商
+BANK_ACCOUNT=your_bank_account           # 银行账户
+BANK_NAME=your_bank_name                 # 银行名称
+```
+
+### 日志配置
+
+系统使用Python的logging模块进行日志记录。日志配置示例：
+
+```python
+# app/core/logging.py
+import logging
+import os
+from logging.handlers import RotatingFileHandler
+
+def setup_logging():
+    log_dir = os.getenv("LOG_DIR", "logs")
+    os.makedirs(log_dir, exist_ok=True)
+    
+    log_file = os.path.join(log_dir, "edba.log")
+    log_level = os.getenv("LOG_LEVEL", "INFO")
+    log_format = os.getenv("LOG_FORMAT", "%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+    
+    # 配置根日志记录器
+    logging.basicConfig(
+        level=getattr(logging, log_level),
+        format=log_format,
+        handlers=[
+            RotatingFileHandler(
+                log_file,
+                maxBytes=10485760,  # 10MB
+                backupCount=5
+            ),
+            logging.StreamHandler()
+        ]
+    )
+```
+
+### 数据库迁移
+
+使用Alembic进行数据库迁移管理：
+
+1. **初始化迁移**
 
 ```bash
 # 创建迁移脚本
@@ -216,7 +381,7 @@ alembic revision --autogenerate -m "Initial migration"
 alembic upgrade head
 ```
 
-### 创建新的迁移
+2. **创建新的迁移**
 
 ```bash
 # 创建迁移脚本
@@ -225,6 +390,144 @@ alembic revision --autogenerate -m "描述迁移内容"
 # 应用迁移
 alembic upgrade head
 ```
+
+3. **回滚迁移**
+
+```bash
+# 回滚到上一个版本
+alembic downgrade -1
+
+# 回滚到特定版本
+alembic downgrade <revision_id>
+```
+
+## 监控和维护
+
+### 健康检查
+
+系统提供了健康检查端点：
+
+- GET `/api/v1/health` - 检查系统健康状态
+- GET `/api/v1/health/db` - 检查数据库连接状态
+- GET `/api/v1/health/storage` - 检查存储系统状态
+
+### 性能监控
+
+1. **使用Prometheus监控**
+
+安装Prometheus客户端：
+```bash
+pip install prometheus-client
+```
+
+配置Prometheus指标：
+```python
+from prometheus_client import Counter, Histogram
+import time
+
+# 定义指标
+REQUEST_COUNT = Counter('http_requests_total', 'Total HTTP requests')
+REQUEST_LATENCY = Histogram('http_request_duration_seconds', 'HTTP request latency')
+
+# 中间件示例
+@app.middleware("http")
+async def prometheus_middleware(request: Request, call_next):
+    REQUEST_COUNT.inc()
+    start_time = time.time()
+    response = await call_next(request)
+    REQUEST_LATENCY.observe(time.time() - start_time)
+    return response
+```
+
+2. **使用Grafana可视化**
+
+创建Grafana仪表板，监控以下指标：
+
+- 请求总数
+- 请求延迟
+- 错误率
+- 数据库连接数
+- 系统资源使用情况
+
+## 故障排除
+
+### 常见问题
+
+1. **数据库连接错误**
+   - 检查MySQL服务是否运行
+   - 验证`.env`文件中的数据库配置
+   - 确保数据库用户有正确的权限
+   - 检查数据库端口是否被占用
+
+2. **文件上传失败**
+   - 检查上传目录权限
+   - 验证文件大小是否超过限制
+   - 确认文件类型是否允许
+   - 检查磁盘空间是否充足
+
+3. **认证问题**
+   - 验证JWT密钥是否正确
+   - 检查令牌是否过期
+   - 确认用户权限是否正确
+   - 查看日志中的认证错误
+
+4. **性能问题**
+   - 检查数据库索引
+   - 优化查询语句
+   - 调整工作进程数
+   - 监控系统资源使用
+
+### 日志分析
+
+使用以下命令分析日志：
+
+```bash
+# 查看错误日志
+grep ERROR logs/edba.log
+
+# 查看特定用户的日志
+grep "user@example.com" logs/edba.log
+
+# 查看特定时间段的日志
+grep "2024-03-20" logs/edba.log
+
+# 实时查看日志
+tail -f logs/edba.log
+```
+
+## 安全建议
+
+1. **定期更新依赖**
+
+```bash
+pip install --upgrade -r requirements.txt
+```
+
+2. **数据库安全**
+   - 使用强密码
+   - 限制数据库访问IP
+   - 定期备份数据
+   - 启用SSL连接
+
+3. **API安全**
+   - 启用HTTPS
+   - 实现请求速率限制
+   - 验证所有输入
+   - 使用安全的HTTP头
+
+4. **文件安全**
+   - 限制文件上传类型
+   - 扫描上传文件
+   - 使用安全的文件存储
+   - 定期清理临时文件
+
+## 联系支持
+
+如遇到问题，请通过以下方式联系支持：
+
+1. 提交Issue到项目仓库
+2. 发送邮件到 <support@edba.com>
+3. 在工作时间（9:00-18:00）拨打支持热线
 
 ## 测试
 

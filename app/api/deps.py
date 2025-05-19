@@ -11,17 +11,17 @@ from app.core.config import settings
 from app.db.session import SessionLocal
 from app.models.enums import UserRole
 
-# OAuth2密码流的令牌URL
+# OAuth2 password mode token URL
 oauth2_scheme = OAuth2PasswordBearer(
     tokenUrl=f"{settings.API_V1_STR}/auth/login",
-    scheme_name="OAuth2密码模式",
-    description="使用邮箱和密码登录获取访问令牌",
+    scheme_name="OAuth2 password mode",
+    description="Use email and password to login and get access token",
     auto_error=True
 )
 
 
 def get_db() -> Generator:
-    """获取数据库会话"""
+    """Get database session"""
     try:
         db = SessionLocal()
         yield db
@@ -32,7 +32,7 @@ def get_db() -> Generator:
 def get_current_user(
     db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)
 ) -> models.user.User:
-    """获取当前用户"""
+    """Get current user"""
     try:
         payload = jwt.decode(
             token, settings.SECRET_KEY, algorithms=["HS256"]
@@ -41,33 +41,33 @@ def get_current_user(
     except (jwt.JWTError, ValidationError):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="无法验证凭据",
+            detail="Cannot verify credentials",
         )
     user = crud.user.get(db, id=int(token_data.sub))
     if not user:
-        raise HTTPException(status_code=404, detail="用户不存在")
+        raise HTTPException(status_code=404, detail="User does not exist")
     if not user.is_active:
-        raise HTTPException(status_code=400, detail="用户未激活")
+        raise HTTPException(status_code=400, detail="User is not active")
     return user
 
 
 def get_current_active_user(
     current_user: models.user.User = Depends(get_current_user),
 ) -> models.user.User:
-    """获取当前激活的用户"""
+    """Get current active user"""
     if not current_user.is_active:
-        raise HTTPException(status_code=400, detail="用户未激活")
+        raise HTTPException(status_code=400, detail="User is not active")
     return current_user
 
 
 def get_current_t_admin(
     current_user: models.user.User = Depends(get_current_user),
 ) -> models.user.User:
-    """获取当前技术管理员（T-Admin）"""
+    """Get current T-Admin"""
     if current_user.role != UserRole.T_ADMIN:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="权限不足，需要技术管理员权限",
+            detail="Permission denied, need T-Admin permission",
         )
     return current_user
 
@@ -75,11 +75,11 @@ def get_current_t_admin(
 def get_current_e_admin(
     current_user: models.user.User = Depends(get_current_user),
 ) -> models.user.User:
-    """获取当前管理管理员（E-Admin）"""
+    """Get current E-Admin"""
     if current_user.role not in [UserRole.E_ADMIN, UserRole.SENIOR_E_ADMIN, UserRole.T_ADMIN]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="权限不足，需要管理管理员权限",
+            detail="Permission denied, need E-Admin permission",
         )
     return current_user
 
@@ -87,11 +87,11 @@ def get_current_e_admin(
 def get_current_senior_e_admin(
     current_user: models.user.User = Depends(get_current_user),
 ) -> models.user.User:
-    """获取当前高级管理管理员（Senior E-Admin）"""
+    """Get current Senior E-Admin"""
     if current_user.role != UserRole.SENIOR_E_ADMIN and current_user.role != UserRole.T_ADMIN:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="权限不足，需要高级管理管理员权限",
+            detail="Permission denied, need Senior E-Admin permission",
         )
     return current_user
 
@@ -99,10 +99,10 @@ def get_current_senior_e_admin(
 def get_current_o_convener(
     current_user: models.user.User = Depends(get_current_user),
 ) -> models.user.User:
-    """获取当前组织协调人（O-Convener）"""
-    if current_user.role != UserRole.O_CONVENER and current_user.role != UserRole.T_ADMIN:
+    """Get current O-Convener"""
+    if current_user.role != UserRole.O_CONVENER and current_user.role != UserRole.T_ADMIN and current_user.role != UserRole.E_ADMIN:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="权限不足，需要组织协调人权限",
+            detail="Permission denied, need O-Convener permission",
         )
     return current_user

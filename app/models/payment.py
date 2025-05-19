@@ -2,6 +2,7 @@ from sqlalchemy import Boolean, Column, Integer, String, ForeignKey, DateTime, E
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone, timedelta
 import enum
+from sqlalchemy.ext.declarative import declarative_base
 
 from app.db.session import Base
 

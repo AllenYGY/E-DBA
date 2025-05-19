@@ -1,3 +1,4 @@
+from sqlalchemy.dialects.mysql import LONGTEXT
 from sqlalchemy import Boolean, Column, Integer, String, ForeignKey, DateTime, Text
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone, timedelta  
@@ -9,9 +10,9 @@ class Organization(Base):
     __tablename__ = "organizations"
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(255), index=True, nullable=False)
-    description = Column(Text, nullable=True)
+    full_name = Column(Text, nullable=True)
     email_domain = Column(String(255), nullable=True)  # 用于通配符邮箱验证（如 *@domain）
-    verification_document = Column(String(255), nullable=True)  # PDF证明文件路径
+    verification_document = Column(LONGTEXT)  
     is_verified = Column(Boolean, default=False, nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
     is_deleted = Column(Boolean, default=False)

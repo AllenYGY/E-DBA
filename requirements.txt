@@ -7,7 +7,6 @@ pydantic-settings==2.0.3
 
 # 数据库
 sqlalchemy==2.0.23
-mysqlclient==2.2.0
 alembic==1.12.1
 
 # 认证和安全性
@@ -15,11 +14,6 @@ python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 python-jose==3.3.0
 python-multipart==0.0.6
-
-# 文件处理
-python-magic==0.4.27
-openpyxl==3.1.2
-PyPDF2==3.0.1
 
 # 测试
 pytest==7.4.3
@@ -30,13 +24,3 @@ httpx==0.25.1
 python-dotenv==1.0.0
 email-validator==2.1.0.post1
 requests==2.31.0
-aiofiles==23.2.1
-
-# 日志和监控
-loguru==0.7.2
-
-# 开发工具
-black==23.11.0
-isort==5.12.0
-flake8==6.1.0
-mypy==1.7.0 

@@ -75,6 +75,7 @@ async def update_system_config(
     crud.log.create_log(
         db=db,
         user_id=current_user.id,
+        organization_id=current_user.organization_id,
         log_type=models.LogType.ADMIN_ACTION,
         action="更新系统配置",
         details=f"管理员 {current_user.email} 更新了系统配置"
@@ -104,6 +105,7 @@ async def toggle_maintenance_mode(
     crud.log.create_log(
         db=db,
         user_id=current_user.id,
+        organization_id=current_user.organization_id,
         log_type=models.LogType.ADMIN_ACTION,
         action=f"{action}系统维护模式",
         details=f"管理员 {current_user.email} {action}了系统维护模式"

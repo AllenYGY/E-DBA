@@ -6,6 +6,9 @@ import httpx
 from app import crud
 from app.api import deps
 from app.models.service import ServiceType
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -31,7 +34,7 @@ async def verify_student(
         if not service or not service.external_api_config:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="学生验证服务未配置"
+                detail="Student verification service not configured"
             )
         
         config = service.external_api_config
@@ -59,7 +62,7 @@ async def verify_student(
             if response.status_code != 200:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"验证失败: {response.text}"
+                    detail=f"Verification failed: {response.text}"
                 )
             
             return response.json()
@@ -67,7 +70,7 @@ async def verify_student(
     except httpx.RequestError as e:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"验证服务暂时不可用: {str(e)}"
+            detail=f"Verification service temporarily unavailable: {str(e)}"
         )
 
 @router.post("/record", response_model=dict)
@@ -77,7 +80,7 @@ async def get_student_record(
     name: str = Body(...),
     id: str = Body(...),
 ) -> Any:
-    """获取学生GPA和年份信息
+    """Get student GPA and year information
     
     Args:
         name: 学生姓名
@@ -91,12 +94,12 @@ async def get_student_record(
         }
     """
     try:
-        # 从内部数据库获取API配置
+        # Get API configuration from internal database
         service = crud.service.get_by_type(db, service_type=ServiceType.STUDENT_GPA)
         if not service or not service.external_api_config:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="学生GPA查询服务未配置"
+                detail="Student GPA query service not configured"
             )
         
         config = service.external_api_config
@@ -127,4 +130,32 @@ async def get_student_record(
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=f"服务暂时不可用: {str(e)}"
+        )
+    
+# get all student verification services
+@router.get("/get-all-student-verification-services")
+async def get_all_student_verification_services(
+):
+    """Get all student verification services"""
+    student_verification_service = {
+        "base_url": "http://172.16.160.88:8001",
+        "path": "/hw/student/all",
+    }
+    url = f"{student_verification_service['base_url']}{student_verification_service['path']}"
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                url,
+            )
+            if response.status_code != 200:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="Student verification service temporarily unavailable"
+                )
+            return response.json()
+    except Exception as e:
+        logger.error(f"Error calling student verification API: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Error calling student verification API: {str(e)}"
         )

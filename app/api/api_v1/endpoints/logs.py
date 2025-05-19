@@ -1,26 +1,29 @@
 from typing import Any, List
 from datetime import datetime
+from sqlalchemy import or_
 
-from fastapi import APIRouter, Body, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy.orm import Session
 
-from app import models, schemas, crud
+from app import models
 from app.api import deps
+from app.schemas.log import LogListResponse
 
 router = APIRouter()
 
 
-@router.get("/", response_model=List[dict])
+@router.get("/", response_model=LogListResponse)
 async def read_logs(
     db: Session = Depends(deps.get_db),
     skip: int = 0,
     limit: int = 100,
-    log_type: str = Query(None, description="日志类型"),
-    user_id: int = Query(None, description="用户ID"),
-    organization_id: int = Query(None, description="组织ID"),
-    start_date: str = Query(None, description="开始日期 (YYYY-MM-DD)"),
-    end_date: str = Query(None, description="结束日期 (YYYY-MM-DD)"),
+    log_type: str = Query(None, description="Log Type"),
+    user_id: int = Query(None, description="User ID"),
+    organization_id: int = Query(None, description="Organization ID"),
+    search: str = Query(None, description="Search keyword for action or details"),
+    start_date: str = Query(None, description="Start Date (YYYY-MM-DD)"),
+    end_date: str = Query(None, description="End Date (YYYY-MM-DD)"),
     current_user: models.user.User = Depends(deps.get_current_e_admin),
 ) -> Any:
     """获取系统日志（需要E-Admin权限）"""
@@ -36,6 +39,14 @@ async def read_logs(
     
     if organization_id:
         query = query.filter(models.Log.organization_id == organization_id)
+    
+    if search:
+        query = query.filter(
+            or_(
+                models.Log.action.ilike(f"%{search}%"),
+                models.Log.details.ilike(f"%{search}%")
+            )
+        )
     
     if start_date:
         try:
@@ -59,10 +70,11 @@ async def read_logs(
                 detail="结束日期格式无效，请使用YYYY-MM-DD格式",
             )
     
-    # 按时间倒序排序
-    query = query.order_by(models.Log.created_at.desc())
+    # 统计总数（在分页前！）
+    total = query.count()
     
-    # 执行查询
+    # 排序和分页
+    query = query.order_by(models.Log.created_at.desc())
     logs = query.offset(skip).limit(limit).all()
     
     # 转换为字典列表，包含用户和组织信息
@@ -82,7 +94,7 @@ async def read_logs(
         
         result.append(log_data)
     
-    return result
+    return LogListResponse(items=result, total=total)
 
 
 @router.get("/my-logs", response_model=List[dict])

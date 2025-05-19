@@ -138,3 +138,32 @@ async def get_thesis_pdf(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=f"调用外部API时出错: {str(e)}"
         ) 
+    
+# get all thesis services
+@router.get("/get-all-thesis-services")
+async def get_all_thesis_services(
+):
+    """Get all thesis services"""
+    thesis_service = {
+        "base_url": "http://172.16.160.88:8001",
+        "path": "/hw/thesis/all",
+        "method": "GET",
+    }
+    url = f"{thesis_service['base_url']}{thesis_service['path']}"
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                url,
+            )
+            if response.status_code != 200:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="Thesis service temporarily unavailable"
+                )
+            return response.json()
+    except Exception as e:
+        logger.error(f"Error calling thesis API: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Error calling thesis API: {str(e)}"
+        )

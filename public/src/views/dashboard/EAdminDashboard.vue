@@ -1,0 +1,279 @@
+<template>
+  <a-layout class="dashboard-layout">
+    <a-layout-sider
+      :collapsed="collapsed"
+      :trigger="null"
+      collapsible
+      class="dashboard-sider"
+    >
+      <div class="logo">
+        <img src="/vite.svg" alt="E-DBA Logo" />
+        <span v-if="!collapsed">E-Admin</span>
+      </div>
+      <a-menu :selectedKeys="selectedKeys" theme="dark" mode="inline">
+        <a-menu-item key="overview" @click="() => setContent('overview')">
+          <template #icon><UserOutlined /></template>
+          <span>Dashboard</span>
+        </a-menu-item>
+        <a-menu-item key="orgs" @click="() => setContent('orgs')">
+          <template #icon><ProfileOutlined /></template>
+          <span>Organization Management</span>
+        </a-menu-item>
+        <a-menu-item key="policies" @click="() => setContent('policies')">
+          <template #icon><SettingOutlined /></template>
+          <span>Policy Management</span>
+        </a-menu-item>
+        <a-menu-item key="logs" @click="() => setContent('logs')">
+          <template #icon><FileSearchOutlined /></template>
+          <span>System Logs</span>
+        </a-menu-item>
+        <a-menu-item key="bankAccount" @click="() => setContent('bankAccount')">
+          <template #icon><UserOutlined /></template>
+          <span>Bank Account</span>
+        </a-menu-item>
+        <a-menu-item key="profile" @click="() => setContent('profile')">
+          <user-outlined /> Personal Profile
+        </a-menu-item>
+      </a-menu>
+    </a-layout-sider>
+    <a-layout>
+      <a-layout-header class="dashboard-header">
+        <menu-unfold-outlined
+          v-if="collapsed"
+          class="trigger"
+          @click="() => (collapsed = !collapsed)"
+        />
+        <menu-fold-outlined
+          v-else
+          class="trigger"
+          @click="() => (collapsed = !collapsed)"
+        />
+        <div class="header-right">
+          <a-dropdown>
+            <a class="user-dropdown" @click.prevent>
+              <a-avatar><template #icon><UserOutlined /></template></a-avatar>
+              <span class="username">E-Admin</span>
+            </a>
+            <template #overlay>
+              <a-menu>
+                <a-menu-item key="profile" @click="() => setContent('profile')">
+                  <user-outlined /> Personal Profile
+                </a-menu-item>
+                <a-menu-divider />
+                <a-menu-item key="logout" @click="logout">
+                  <logout-outlined /> Logout
+                </a-menu-item>
+              </a-menu>
+            </template>
+          </a-dropdown>
+        </div>
+      </a-layout-header>
+      <a-layout-content class="dashboard-content">
+        <div class="content-wrapper">
+          <div v-if="contentKey === 'overview'">
+            <h2>E-Admin Dashboard</h2>
+            <p>Welcome, you can manage organizations, policies, and view system logs.</p>
+            <div class="dashboard-cards">
+              <div class="card" @click="() => setContent('orgs')">
+                <ProfileOutlined class="card-icon" />
+                <span>Organization Management</span>
+              </div>
+              <div class="card" @click="() => setContent('policies')">
+                <SettingOutlined class="card-icon" />
+                <span>Policy Management</span>
+              </div>
+              <div class="card" @click="() => setContent('logs')">
+                <FileSearchOutlined class="card-icon" />
+                <span>System Logs</span>
+              </div>
+              <div class="card" @click="() => setContent('bankAccount')">
+                <UserOutlined class="card-icon" />
+                <span>Bank Account</span>
+              </div>
+              <div class="card" @click="() => setContent('profile')">
+                <UserOutlined class="card-icon" />
+                <span>Personal Profile</span>
+              </div>
+            </div>
+          </div>
+          <div v-else-if="contentKey === 'orgs'">
+            <OrganizationManagement />
+          </div>
+          <div v-else-if="contentKey === 'policies'">
+            <PolicyManagement />
+          </div>
+          <div v-else-if="contentKey === 'logs'">
+            <SystemLog />
+          </div>
+          <div v-else-if="contentKey === 'bankAccount'">
+            <BankAccount />
+          </div>
+          <div v-else-if="contentKey === 'profile'">
+            <UserProfileCard />
+          </div>
+        </div>
+      </a-layout-content>
+    </a-layout>
+  </a-layout>
+</template>
+
+<script setup>
+import { ref, computed } from 'vue'
+import OrganizationManagement from '../management/OrganizationManagement.vue'
+import PolicyManagement from '../management/PolicyManagement.vue'
+import SystemLog from '../management/LogManagement.vue'
+import BankAccount from '../workspace/BankAccount.vue'
+import UserProfileCard from './UserProfileCard.vue'
+import {
+  MenuUnfoldOutlined,
+  MenuFoldOutlined,
+  UserOutlined,
+  ProfileOutlined,
+  SettingOutlined,
+  FileSearchOutlined,
+  LogoutOutlined
+} from '@ant-design/icons-vue'
+
+const collapsed = ref(false)
+const contentKey = ref('overview')
+const selectedKeys = computed(() => [contentKey.value])
+const setContent = (key) => {
+  contentKey.value = key
+}
+
+const logout = () => {
+  localStorage.removeItem('token')
+  localStorage.removeItem('token_type')
+  localStorage.removeItem('role')
+  window.location.href = '/login'
+}
+</script>
+
+<style scoped>
+.dashboard-layout {
+  width: 100%;
+  height: 100vh;
+  min-height: 100vh;
+  display: flex;
+  background: #f5f6fa;
+  min-width: 0;
+  overflow-x: hidden;
+}
+.dashboard-sider {
+  width: 220px !important;
+  min-width: 220px !important;
+  max-width: 220px !important;
+  box-shadow: 2px 0 6px rgba(0, 21, 41, 0.15);
+  z-index: 10;
+}
+.logo {
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.1);
+  margin: 0;
+  overflow: hidden;
+}
+.logo img {
+  height: 32px;
+  margin-right: 8px;
+}
+.logo span {
+  color: white;
+  font-size: 18px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.dashboard-header {
+  background: #fff;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 1px 4px rgba(0, 21, 41, 0.08);
+  z-index: 9;
+  min-height: 64px;
+}
+.trigger {
+  font-size: 18px;
+  cursor: pointer;
+  transition: color 0.3s;
+}
+.trigger:hover {
+  color: #1890ff;
+}
+.header-right {
+  display: flex;
+  align-items: center;
+}
+.username {
+  margin-left: 8px;
+}
+.dashboard-content {
+  flex: 1;
+  min-width: 0;
+  min-height: calc(100vh - 64px);
+  background: #fff;
+  padding: 32px 32px 24px 32px;
+  margin: 0;
+  overflow: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.content-wrapper {
+  flex: 1;
+  padding: 0;
+  background: #fff;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow-x: hidden;
+}
+@media (max-width: 900px) {
+  .dashboard-content {
+    padding: 16px 4px 8px 4px;
+  }
+  .dashboard-sider {
+    width: 60px !important;
+    min-width: 60px !important;
+    max-width: 60px !important;
+  }
+  .logo span { display: none; }
+}
+.dashboard-cards {
+  display: flex;
+  gap: 24px;
+  margin-top: 32px;
+}
+.card {
+  background: #f6f8fa;
+  border-radius: 8px;
+  padding: 32px;
+  min-width: 180px;
+  text-align: center;
+  box-shadow: 0 2px 8px #eee;
+  font-size: 18px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+.card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  background: #fff;
+}
+.card-icon {
+  font-size: 32px;
+  color: #1890ff;
+}
+.card span {
+  color: #333;
+}
+</style> 

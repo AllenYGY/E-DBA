@@ -1,17 +1,13 @@
-from fastapi import APIRouter, Depends, Query, HTTPException, status
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from typing import Any, List
-from fastapi.encoders import jsonable_encoder
-from app.core.config import settings
 from app.api.api_v1.endpoints import (
     users, auth, organizations, services, thesis, bank,
     courses, transfer, student_verification, logs,
-    policies, system_config, verification
+    policies, system_config, verification, question
 )
 from app.api import deps
 from app.models.service import ServiceType
 from app.crud.service import service as service_crud
-from app import models, schemas
 
 api_router = APIRouter()
 
@@ -33,6 +29,9 @@ api_router.include_router(
 api_router.include_router(
     verification.router, prefix="/verification", tags=["Verification"])
 
+# Help/Question 相关路由
+api_router.include_router(question.router, prefix="/help", tags=["Help"])
+
 # 课程相关路由
 api_router.include_router(courses.router, prefix="/courses", tags=["Courses"])
 
@@ -51,6 +50,8 @@ api_router.include_router(
 api_router.include_router(system_config.router,
                           prefix="/system", tags=["System"])
 
+
+
 # 动态加载外部服务路由
 def get_service_router(service_type: ServiceType, db: Session = Depends(deps.get_db)):
     service = service_crud.get_by_type(db, service_type=service_type)
@@ -62,20 +63,21 @@ def get_service_router(service_type: ServiceType, db: Session = Depends(deps.get
 # 学生验证相关路由
 api_router.include_router(
     student_verification.router,
-    prefix="/hw/student",  # 默认前缀，如果数据库中没有配置
+    prefix="/student",  # 默认前缀，如果数据库中没有配置
     tags=["Student"]
 )
 
 # 论文相关路由
 api_router.include_router(
     thesis.router,
-    prefix="/hw/thesis",  # 使用外部API的路由前缀
+    prefix="/thesis",  # 使用外部API的路由前缀
     tags=["Thesis"]
 )
 
 # 银行相关路由
 api_router.include_router(
     bank.router,
-    prefix="/hw/bank",  # 使用外部API的路由前缀
+    prefix="/bank",  # 使用外部API的路由前缀
     tags=["Bank"]
 )
+

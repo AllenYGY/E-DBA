@@ -75,12 +75,17 @@ class Settings(BaseSettings):
     BANK_TRANSFER_NAME: str
     BANK_TRANSFER_DESCRIPTION: str
 
+    # SMTP配置
+    SMTP_HOST: str = "smtp.qq.com"  # 或其他SMTP服务器
+    SMTP_PORT: int = 587
+    SMTP_USER: str = "allenygy@qq.com"
+    SMTP_PASSWORD: str = "adeulpkrslubdhad"  # 对于Gmail，使用应用专用密码
+
     @validator("SQLALCHEMY_DATABASE_URI", pre=True)
     def assemble_db_connection(cls, v: Optional[str], values: Dict[str, Any]) -> Any:
         if isinstance(v, str):
             return v
-        return f"mysql+mysqlconnector://{values.get('MYSQL_USER')}:{values.get('MYSQL_PASSWORD')}@{values.get('MYSQL_SERVER')}:{values.get('MYSQL_PORT')}/{values.get('MYSQL_DB')}"
-
+        return f"mysql+pymysql://{values.get('MYSQL_USER')}:{values.get('MYSQL_PASSWORD')}@{values.get('MYSQL_SERVER')}:{values.get('MYSQL_PORT')}/{values.get('MYSQL_DB')}"
     class Config:
         from_attributes = True
         case_sensitive = True
@@ -94,6 +99,10 @@ if __name__ == "__main__":
     print(f"项目名称: {settings.PROJECT_NAME}")
     print(f"API版本: {settings.API_V1_STR}")
     print(f"数据库URI: {settings.SQLALCHEMY_DATABASE_URI}")
+    print(f"数据库用户: {settings.MYSQL_USER}")
+    print(f"数据库密码: {settings.MYSQL_PASSWORD}")
+    print(f"数据库端口: {settings.MYSQL_PORT}")
+    print(f"数据库名称: {settings.MYSQL_DB}")
     print(f"CORS origins: {settings.BACKEND_CORS_ORIGINS}")
     print(f"Token过期时间: {settings.ACCESS_TOKEN_EXPIRE_MINUTES} 分钟")
     print(f"外部服务基础URL: {settings.EXTERNAL_SERVICE_BASE_URL}")

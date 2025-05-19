@@ -1,120 +1,185 @@
-from typing import Any, List
+from typing import Any, Dict
+from io import BytesIO
 
-from fastapi import APIRouter, Body, Depends, HTTPException, status
+from fastapi import APIRouter, Body, Depends, HTTPException, status, UploadFile, File
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy.orm import Session
+import openpyxl
 
 from app import schemas, crud
 from app.api import deps
-from app.core.config import settings
-from app.models.user import UserRole
-from app.models import User
+from app.models import User, Organization
 from app.models.log import LogType
+from app.models.enums import UserRole
 
 router = APIRouter()
 
-ROLE_LEVEL = {
-    "T_ADMIN": 3,
-    "SENIOR_E_ADMIN": 2,
-    "E_ADMIN": 1,
-    "O_CONVENER": 0,
-    "DATA_USER": 0,
-}
-
 def can_create(creator_role, target_role):
-    if creator_role == "T_ADMIN":
+    if creator_role == UserRole.T_ADMIN:
         return True
-    if creator_role == "SENIOR_E_ADMIN":
-        return target_role in ["E_ADMIN", "O_CONVENER", "DATA_USER"]
-    if creator_role == "E_ADMIN":
-        return target_role in ["O_CONVENER", "DATA_USER"]
+    if creator_role == UserRole.SENIOR_E_ADMIN:
+        return target_role in [UserRole.E_ADMIN, UserRole.O_CONVENER, UserRole.DATA_USER]
+    if creator_role == UserRole.E_ADMIN:
+        return target_role in [UserRole.O_CONVENER, UserRole.DATA_USER]
+    if creator_role == UserRole.O_CONVENER:
+        return target_role in [UserRole.DATA_USER]
     return False
 
-@router.get("/", response_model=List[schemas.User])
-async def read_users(
+
+@router.post("/", response_model=schemas.User)
+async def create_user(
+    *,
     db: Session = Depends(deps.get_db),
-    skip: int = 0,
-    limit: int = 100,
-    current_user: User = Depends(deps.get_current_e_admin),
+    user_in: schemas.UserCreate,
+    current_user: User = Depends(deps.get_current_o_convener),
 ) -> Any:
-    """获取用户列表（需要E-Admin权限）"""
-    users = crud.user.get_multi(db, skip=skip, limit=limit)
-    return users
-
-
-# @router.post("/", response_model=schemas.User)
-# async def create_user(
-#     *,
-#     db: Session = Depends(deps.get_db),
-#     user_in: schemas.UserCreate,
-#     current_user: User = Depends(deps.get_current_e_admin),
-# ) -> Any:
-#     """创建新用户（需要E-Admin权限）"""
-#     user = crud.user.get_by_email(db, email=user_in.email)
-#     if user:
-#         raise HTTPException(
-#             status_code=status.HTTP_400_BAD_REQUEST,
-#             detail="该邮箱已被注册",
-#         )
-#     target_role = user_in.role if isinstance(user_in.role, str) else user_in.role.value
-#     creator_role = current_user.role if isinstance(current_user.role, str) else current_user.role.value
-#     if not can_create(creator_role, target_role):
-#         raise HTTPException(
-#             status_code=status.HTTP_403_FORBIDDEN,
-#             detail=f"{creator_role} 无权创建 {target_role} 用户",
-#         )
-#     user = crud.user.create(db, obj_in=user_in)
+    """
+    Create a new user. Need to be one of the following roles: (E-Admin, T-Admin, Senior E-Admin, O-Convener)
+    """
+    user = crud.user.get_by_email(db, email=user_in.email)
+    if user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The email has been registered",
+        )
+    target_role = user_in.role if isinstance(user_in.role, str) else user_in.role.value
+    creator_role = current_user.role if isinstance(current_user.role, str) else current_user.role.value
+    if not can_create(creator_role, target_role):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"{creator_role} does not have permission to create {target_role} user",
+        )
+    user_in.organization_id = current_user.organization_id
+    user = crud.user.create(db, obj_in=user_in)
     
-#     # 记录用户创建日志
-#     crud.log.create_log(
-#         db=db,
-#         user_id=current_user.id,
-#         log_type=LogType.SYSTEM,
-#         action="创建用户",
-#         details=f"管理员 {current_user.email} 创建了用户 {user.email}"
-#     )
-#     return user
+    crud.log.create_log(
+        db=db,
+        user_id=current_user.id,
+        log_type=LogType.SYSTEM,
+        organization_id=current_user.organization_id,
+        action="Create user",
+        details=f"User {current_user.email} created user {user.email}"
+    )
+    return user
 
 
-@router.get("/me", response_model=schemas.User)
+@router.get("/me")
 async def read_user_me(
+    db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.get_current_active_user),
 ) -> Any:
-    """获取当前登录用户信息"""
-    return current_user
+    """获取当前登录用户信息和组织"""
+    organization = None
+    if current_user.organization_id:
+        organization = db.query(Organization).filter(Organization.id == current_user.organization_id).first()
+    
+    user_info = {
+        "id": current_user.id,
+        "email": current_user.email,
+        "username": current_user.username,
+        "role": current_user.role,
+        "is_active": current_user.is_active,
+        "is_deleted": current_user.is_deleted,
+        "created_at": current_user.created_at,
+        "updated_at": current_user.updated_at,
+        "deleted_at": current_user.deleted_at,
+        "organization_id": current_user.organization_id,
+        "permission_level": current_user.permission_level,
+        "balance": current_user.balance,
+        "organization_short_name": organization.name if organization else None,
+        "organization_full_name": organization.full_name if organization else None
+    }
+    return user_info
 
 
 @router.put("/me", response_model=schemas.User)
 async def update_user_me(
     *,
     db: Session = Depends(deps.get_db),
-    password: str = Body(None),
+    email: str = Body(None),
     username: str = Body(None),
+    password: str = Body(None),
     current_user: User = Depends(deps.get_current_active_user),
 ) -> Any:
-    """更新当前登录用户信息"""
+    """
+    Update current user information
+    """
     current_user_data = jsonable_encoder(current_user)
     user_in = schemas.UserUpdate(**current_user_data)
     
-    print(user_in.password,user_in.username)
+    if email is not None:
+        user_in.email = email
     if password is not None:
         user_in.password = password
     if username is not None:
         user_in.username = username
+        
+    # 检查邮箱是否已注册 除了当前用户
+    if user_in.email and user_in.email != current_user.email:
+        existing_user = crud.user.get_by_email(db, email=user_in.email)
+        if existing_user:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="The email has been registered",
+            )
+        
     user = crud.user.update(db, db_obj=current_user, obj_in=user_in)
     
-    # 记录用户更新日志
+    # Record user update log
     crud.log.create_log(
         db=db,
         user_id=current_user.id,
         organization_id=current_user.organization_id,
         log_type=LogType.SYSTEM,
-        action="更新个人信息",
-        details=f"用户 {user.email} 更新了个人信息"
+        action="Update personal information",
+        details=f"User {user.email} updated personal information"
     )
     
     return user
 
+
+@router.get("/search", response_model=Dict[str, Any])
+async def search_users(
+    *,
+    db: Session = Depends(deps.get_db),
+    username: str = None,
+    email: str = None,
+    role: str = None,
+    organization_id: int = None,
+    permission_level: int = None,
+    skip: int = 0,
+    limit: int = 100,
+    current_user: User = Depends(deps.get_current_o_convener),
+) -> Any:
+    """
+    Search users with multiple conditions
+    Need to be one of the following roles: (E-Admin, T-Admin, Senior E-Admin, O-Convener)
+    """
+    query = db.query(User)
+    if username:
+        query = query.filter(User.username.ilike(f"%{username}%"))
+    if email:
+        query = query.filter(User.email.ilike(f"%{email}%"))
+    if role:
+        query = query.filter(User.role == role)
+    if organization_id is not None:
+        query = query.filter(User.organization_id == organization_id)
+    if permission_level is not None:
+        query = query.filter(User.permission_level == permission_level)
+    total = query.count()
+    users = query.offset(skip).limit(limit).all()
+    crud.log.create_log(
+        db=db,
+        user_id=current_user.id,
+        organization_id=current_user.organization_id,
+        log_type=LogType.SYSTEM,
+        action="Search users",
+        details=f"Admin {current_user.email} searched users with multiple conditions"
+    )
+    return {
+        "items": [schemas.User.from_orm(user) for user in users],
+        "total": total
+    }
 
 @router.get("/{user_id}", response_model=schemas.User)
 async def read_user_by_id(
@@ -122,28 +187,32 @@ async def read_user_by_id(
     current_user: User = Depends(deps.get_current_active_user),
     db: Session = Depends(deps.get_db),
 ) -> Any:
-    """根据ID获取用户信息"""
+    """
+    Get user information by ID
+    Need to be one of the following roles: (E-Admin, T-Admin, Senior E-Admin, O-Convener)
+    """
     user = crud.user.get(db, id=user_id)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="用户不存在"
+            detail="User not found"
         )
     if user == current_user:
         return user
     if current_user.role not in [UserRole.E_ADMIN, UserRole.T_ADMIN, UserRole.SENIOR_E_ADMIN]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="权限不足，无法访问其他用户信息",
+            detail="Insufficient permissions, cannot access other user information",
         )
     
-    # 记录查看用户信息的日志
+    # Record log of viewing user information
     crud.log.create_log(
         db=db,
         user_id=current_user.id,
+        organization_id=current_user.organization_id,
         log_type=LogType.SYSTEM,
-        action="查看用户信息",
-        details=f"管理员 {current_user.email} 查看了用户 {user.email} 的信息"
+        action="View user information",
+        details=f"Admin {current_user.email} viewed user {user.email} information"
     )
     
     return user
@@ -154,26 +223,46 @@ async def update_user(
     db: Session = Depends(deps.get_db),
     user_id: int,
     user_in: schemas.UserUpdate,
-    current_user: User = Depends(deps.get_current_e_admin),
+    current_user: User = Depends(deps.get_current_o_convener),
 ) -> Any:
-    """更新用户信息（需要E-Admin权限）"""
+    """
+    Update user information
+    Need to be one of the following roles: (E-Admin, T-Admin, Senior E-Admin, O-Convener)
+    """
     user = crud.user.get(db, id=user_id)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="用户不存在, 无法更新",
+            detail="User not found, cannot update",
         )
+    
+    # Check if the email is repeated
+    if user_in.email and user_in.email != user.email:
+        existing_user = crud.user.get_by_email(db, email=user_in.email)
+        # Only report an error if the found user is not the current user and the email is different
+        if existing_user and existing_user.id != user.id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="The email has been registered",
+            )
+        
+    if current_user.role == UserRole.O_CONVENER and user_in.organization_id != current_user.organization_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="O-Convener can only update user information within their own organization",
+        )
+
     user = crud.user.update(db, db_obj=user, obj_in=user_in)
     
-    # 记录用户更新日志
+    # Record user update log
     crud.log.create_log(
         db=db,
         user_id=current_user.id,
+        organization_id=current_user.organization_id,
         log_type=LogType.SYSTEM,
-        action="更新用户信息",
-        details=f"管理员 {current_user.email} 更新了用户 {user.email} 的信息"
+        action="Update user information",
+        details=f"Admin {current_user.email} updated user {user.email} information"
     )
-    
     return user
 
 
@@ -182,103 +271,142 @@ async def delete_user(
     *,
     db: Session = Depends(deps.get_db),
     user_id: int,
-    current_user: User = Depends(deps.get_current_t_admin),
+    current_user: User = Depends(deps.get_current_o_convener),
 ) -> Any:
-    """删除用户（需要T-Admin权限）"""
+    """
+    Delete user
+    Need to be one of the following roles: (T-Admin, Senior E-Admin, E-Admin, O-Convener)
+    """
     user = crud.user.get(db, id=user_id)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="用户不存在，无法删除",
+            detail="User not found, cannot delete",
         )
     if user.id == current_user.id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="不能删除自己的账户",
+            detail="Cannot delete your own account",
         )
-    user = crud.user.remove(db, id=user_id)
     
-    # 记录用户删除日志
-    crud.log.create_log(
-        db=db,
-        user_id=current_user.id,
-        log_type=LogType.SYSTEM,
-        action="删除用户",
-        details=f"管理员 {current_user.email} 删除了用户 {user.email}"
-    )
-    
-    return user
-
-
-@router.post("/add-quota/{user_id}", response_model=schemas.User)
-async def add_paper_download_quota(
-    *,
-    db: Session = Depends(deps.get_db),
-    user_id: int,
-    amount: float = Body(..., embed=True),
-    current_user: User = Depends(deps.get_current_e_admin),
-) -> Any:
-    """为用户增加论文下载配额（需要E-Admin权限）"""
-    user = crud.user.get(db, id=user_id)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="用户不存在",
-        )
-    if amount <= 0:
+    if current_user.role == UserRole.O_CONVENER and user.organization_id != current_user.organization_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="增加的配额必须大于0",
+            detail="O-Convener can only delete user information within their own organization",
         )
     
-    # 更新用户配额
-    new_quota = user.balance + amount
-    user = crud.user.update(db, db_obj=user, obj_in={"balance": new_quota})
+    user = crud.user.remove(db, id=user_id)
     
-    # 记录配额增加日志
+    # Record user deletion log
     crud.log.create_log(
         db=db,
         user_id=current_user.id,
+        organization_id=current_user.organization_id,
         log_type=LogType.SYSTEM,
-        action="增加下载配额",
-        details=f"管理员 {current_user.email} 为用户 {user.email} 增加了 {amount} 元下载配额"
+        action="Delete user",
+        details=f"{current_user.email} deleted user {user.email}"
     )
     
     return user
 
-@router.post("/{user_id}/add_balance", response_model=dict)
-async def add_balance(
+@router.post("/{user_id}/edit_balance", response_model=dict)
+async def edit_balance(
     user_id: int,
     *,
     db: Session = Depends(deps.get_db),
     amount: float = Body(...),
-    current_user: User = Depends(deps.get_current_e_admin),
+    current_user: User = Depends(deps.get_current_active_user),
 ) -> Any:
-    """增加用户余额（需要E-Admin权限）"""
+    """
+    Add user balance
+    Need to be one of the following roles: (E-Admin, T-Admin, Senior E-Admin, O-Convener)
+    """
     user = crud.user.get(db, id=user_id)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="用户不存在",
+            detail="User not found",
         )
     
-    # 增加用户余额
+    # Edit user balance
     new_balance = user.balance + amount
     user = crud.user.update(db, db_obj=user, obj_in={"balance": new_balance})
     
-    # 记录日志
+    # Record log
     crud.log.create_log(
         db=db,
         user_id=current_user.id,
         organization_id=current_user.organization_id,
         log_type=LogType.PAYMENT,
-        action="增加用户余额",
-        details=f"管理员 {current_user.email} 为用户 {user.email} 增加了 {amount} 元余额，当前余额：{user.balance} 元"
+        action="Edit user balance",
+        details=f"Admin {current_user.email} edited user {user.email} balance, current balance: {user.balance} yuan"
     )
     
     return {
-        "message": "增加用户余额成功",
+        "message": "Edit user balance successfully",
         "user_id": user.id,
         "amount": amount,
         "current_balance": user.balance
     }
+
+@router.post("/batch_create", response_model=dict)
+async def batch_create_users(
+    *,
+    db: Session = Depends(deps.get_db),
+    file: UploadFile = File(...),
+    current_user: User = Depends(deps.get_current_o_convener),
+) -> Any:
+    """
+    批量导入用户（Excel），只支持 .xlsx
+    """
+    if not file.filename.endswith('.xlsx'):
+        raise HTTPException(status_code=400, detail="Only .xlsx files are supported")
+
+    content = await file.read()
+    excel_io = BytesIO(content)
+    wb = openpyxl.load_workbook(excel_io, read_only=True)
+    ws = wb.active
+
+    # 解析表头，全部转小写并去除空格
+    header = [str(cell.value).strip().lower() for cell in next(ws.iter_rows(min_row=1, max_row=1))]
+    print("header", header)
+    required_fields = {"username", "email", "password"}
+    if not required_fields.issubset(set(header)):
+        raise HTTPException(status_code=400, detail=f"Excel must contain columns: {', '.join(required_fields)}")
+
+    results = []
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        data = dict(zip(header, row))
+        # 权限限制
+        role = data.get("role", UserRole.DATA_USER)
+        if current_user.role == UserRole.O_CONVENER and role != UserRole.DATA_USER:
+            results.append({"email": data.get("email"), "success": False, "reason": "O-Convener can only create Data User"})
+            continue
+        # 校验邮箱是否已注册
+        if crud.user.get_by_email(db, email=data["email"]):
+            results.append({"email": data["email"], "success": False, "reason": "Email already registered"})
+            continue
+        # 构造 UserCreate
+        try:
+            user_in = schemas.UserCreate(
+                username=data["username"],
+                email=data["email"],
+                password=data["password"],
+                permission_level=int(data.get("permission_level", 1)),
+                role=role,
+                organization_id=current_user.organization_id
+            )
+            user = crud.user.create(db, obj_in=user_in)
+            results.append({"email": data.get("email"), "success": True, "user_id": user.id, "username": user.username})
+        except Exception as e:
+            results.append({"email": data.get("email"), "success": False, "reason": str(e)})
+
+    crud.log.create_log(
+        db=db,
+        user_id=current_user.id,
+        log_type=LogType.SYSTEM,
+        organization_id=current_user.organization_id,
+        action="Batch create users",
+        details=f"User {current_user.email} batch created users via Excel"
+    )
+    return {"results": results}

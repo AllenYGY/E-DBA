@@ -31,7 +31,7 @@ class User(Base):
     balance = Column(Float, default=1000.0)
     
     # 用户问题和帮助请求
-    help_requests = relationship("HelpRequest", back_populates="user")
+    questions = relationship("Question", back_populates="user")
     
     # 日志记录
     logs = relationship("Log", back_populates="user")
@@ -39,35 +39,38 @@ class User(Base):
     # 转账记录
     transfers = relationship("Transfer", back_populates="from_user")
     
-    
 
-
-class HelpRequest(Base):
-    __tablename__ = "help_requests"
+class Question(Base):
+    __tablename__ = "questions"
     
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"))
     title = Column(String(255))
-    content = Column(Text)
+    description = Column(Text)
+    email = Column(String(255))  # 提问者邮箱
+    role = Column(String(50))    # 提问者角色
     is_resolved = Column(Boolean, default=False)
     is_starred = Column(Boolean, default=False)  # T-Admin回复后显示星标
+    submitted_at = Column(DateTime, default=lambda: datetime.now(tz_utc_8))  # 提交时间
+    responded_at = Column(DateTime, nullable=True)  # 首次回复时间
     created_at = Column(DateTime, default=lambda: datetime.now(tz_utc_8))
     updated_at = Column(DateTime, default=lambda: datetime.now(tz_utc_8), onupdate=lambda: datetime.now(tz_utc_8))
     
     # 关系
-    user = relationship("User", back_populates="help_requests")
-    responses = relationship("HelpResponse", back_populates="help_request")
+    user = relationship("User", back_populates="questions")
+    responses = relationship("QuestionResponse", back_populates="question")
 
 
-class HelpResponse(Base):
-    __tablename__ = "help_responses"
+class QuestionResponse(Base):
+    __tablename__ = "question_responses"
     
     id = Column(Integer, primary_key=True, index=True)
-    help_request_id = Column(Integer, ForeignKey("help_requests.id"))
+    question_id = Column(Integer, ForeignKey("questions.id"))
     responder_id = Column(Integer, ForeignKey("users.id"))  # 通常是T-Admin
     content = Column(Text)
     created_at = Column(DateTime, default=lambda: datetime.now(tz_utc_8))
+    updated_at = Column(DateTime, default=lambda: datetime.now(tz_utc_8), onupdate=lambda: datetime.now(tz_utc_8))
     
     # 关系
-    help_request = relationship("HelpRequest", back_populates="responses")
+    question = relationship("Question", back_populates="responses")
     responder = relationship("User")

@@ -2,7 +2,7 @@ from typing import Any, Dict, Generic, List, Optional, Type, TypeVar, Union
 from datetime import datetime, timezone, timedelta
 
 from fastapi.encoders import jsonable_encoder
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.db.session import Base
@@ -24,11 +24,18 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         """
         通过ID获取对象（不包括已删除的对象）
         """
-        return db.query(self.model).filter(
-            self.model.id == id,
-            self.model.is_deleted == False
-            
-        ).first()
+        try:
+            return db.query(self.model).filter(
+                self.model.id == id,
+                self.model.is_deleted == False
+                
+            ).first()
+        except Exception as e:
+            print(f"Error in get: {str(e)}")
+            return db.query(self.model).filter(
+                self.model.id == id,
+                
+            ).first()
 
     def get_multi(
         self, db: Session, *, skip: int = 0, limit: int = 100
