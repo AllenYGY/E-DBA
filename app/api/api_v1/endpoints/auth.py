@@ -13,7 +13,7 @@ from app.models.log import LogType
 from app.api import deps
 from app.core import security
 from app.core.config import settings
-from app.utils import verify_email
+from app.utils import verify_email, extract_email_domain
 from app.models.user import UserRole
 from app.models.enums import PermissionLevel
 from app.core.email import send_email
@@ -23,6 +23,54 @@ from app.core.cache import (
 )
 
 router = APIRouter()
+
+async def auto_register_user_by_domain(db: Session, email: str, password: str = None) -> Any:
+    """
+    根据邮箱域名自动注册用户
+    如果邮箱域名匹配某个组织的域名，则创建新用户
+    """
+    domain = extract_email_domain(email)
+    if not domain:
+        return None
+    
+    # 查找匹配域名的组织
+    organization = crud.organization.get_by_email_domain(db, email_domain=domain)
+    if not organization:
+        return None
+    
+    # 生成随机密码（如果未提供密码）
+    if not password:
+        password = ''.join(random.choices(string.ascii_letters + string.digits, k=12))
+    
+    # 创建新用户
+    username = email.split('@')[0]  # 使用邮箱前缀作为用户名
+    user_in = schemas.UserCreate(
+        email=email,
+        password=password,
+        username=username,
+        permission_level=PermissionLevel.PUBLIC_DATA.value,
+        role=UserRole.DATA_USER,
+        organization_id=organization.id,
+        balance=1000.0
+    )
+    
+    try:
+        user = crud.user.create(db, obj_in=user_in)
+        
+        # 记录日志
+        crud.log.create_log(
+            db=db,
+            user_id=user.id,
+            organization_id=organization.id,
+            log_type=LogType.SYSTEM,
+            action="Auto register user",
+            details=f"Auto registered user {user.email} for organization {organization.name} based on email domain"
+        )
+        
+        return user
+    except Exception as e:
+        print(f"Error auto registering user: {str(e)}")
+        return None
 
 @router.post("/login", response_model=schemas.Token)
 async def login_access_token(
@@ -35,16 +83,32 @@ async def login_access_token(
     使用OAuth2密码流进行身份验证:
     - **username**: 用户邮箱
     - **password**: 用户密码
+    
+    如果用户不存在但邮箱域名匹配某个组织，将自动创建新用户
     """
     user = crud.user.authenticate(
         db, email=form_data.username, password=form_data.password
     )
+    
+    # 如果用户不存在，尝试自动注册
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid email or password",
-        )
-    elif not user.is_active:
+        # 先检查邮箱是否存在（不需要密码验证）
+        existing_user = crud.user.get_by_email(db, email=form_data.username)
+        if not existing_user:
+            # 尝试自动注册
+            user = await auto_register_user_by_domain(db, form_data.username, form_data.password)
+            if not user:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid email or password",
+                )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid email or password",
+            )
+    
+    if not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User is not active",
@@ -295,6 +359,8 @@ async def login_email_code(
 ):
     """
     邮箱验证码登录
+    
+    如果用户不存在但邮箱域名匹配某个组织，将自动创建新用户
     """
     # 检查邮箱格式
     if not verify_email(email):
@@ -305,27 +371,48 @@ async def login_email_code(
     
     # 检查用户是否存在
     user = crud.user.get_by_email(db, email=email)
+    
+    # 如果用户不存在，尝试自动注册
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
-        )
-    
-    # 获取并验证验证码
-    stored_code = get_email_code(email)
-    if not stored_code:
-        record_attempt(email, False)
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="验证码已过期或不存在"
-        )
-    
-    if stored_code != code:
-        record_attempt(email, False)
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="验证码错误"
-        )
+        # 获取并验证验证码
+        stored_code = get_email_code(email)
+        if not stored_code:
+            record_attempt(email, False)
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="验证码已过期或不存在"
+            )
+        
+        if stored_code != code:
+            record_attempt(email, False)
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="验证码错误"
+            )
+        
+        # 验证码正确，尝试自动注册
+        user = await auto_register_user_by_domain(db, email)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found and no matching organization domain"
+            )
+    else:
+        # 用户存在，验证验证码
+        stored_code = get_email_code(email)
+        if not stored_code:
+            record_attempt(email, False)
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="验证码已过期或不存在"
+            )
+        
+        if stored_code != code:
+            record_attempt(email, False)
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="验证码错误"
+            )
     
     # 验证成功，记录成功尝试
     record_attempt(email, True)

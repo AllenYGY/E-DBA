@@ -278,7 +278,13 @@ const confirmDownload = async () => {
     }
     try {
       // 1. 扣除用户余额
-      await usersApi.editBalance(userId.value, -fee)
+      const balanceRes = await usersApi.editBalance(userId.value, -fee)
+      // 检查余额是否足够
+      if (balanceRes.data.message === "Balance not enough") {
+        message.error('Balance not enough')
+        pendingDownloadRecord.value = null
+        return
+      }
       // 2. 组织间转账
       const res = await bankApi.transferByOrg({
         from_org_id: organizationId,

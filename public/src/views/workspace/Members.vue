@@ -10,19 +10,19 @@
     <a-card :bordered="false" class="search-card">
       <a-space size="middle" class="search-space">
         <a-input
-          v-model="searchForm.username"
+          v-model:value="searchForm.username"
           placeholder="Search by username"
           style="width: 200px"
           @input="fetchUsers"
         />
         <a-input
-          v-model="searchForm.email"
+          v-model:value="searchForm.email"
           placeholder="Search by email"
           style="width: 200px"
           @input="fetchUsers"
         />
         <a-input-number
-          v-model="searchForm.role"
+          v-model:value="searchForm.role"
           placeholder="Role"
           style="width: 120px"
           @change="fetchUsers"

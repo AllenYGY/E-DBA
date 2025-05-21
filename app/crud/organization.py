@@ -106,5 +106,20 @@ class CRUDOrganization(CRUDBase[Organization, Dict[str, Any], Dict[str, Any]]):
         
         return self.update(db, db_obj=organization, obj_in=update_data)
 
+    def get_by_email_domain(self, db: Session, email_domain: str) -> Optional[Organization]:
+        """
+        通过邮箱域名查找组织
+        
+        Args:
+            db: 数据库会话
+            email_domain: 邮箱域名
+            
+        Returns:
+            Optional[models.Organization]: 找到的组织对象，如果未找到则返回 None
+        """
+        return db.query(Organization).filter(
+            Organization.email_domain == email_domain.lower(),
+            Organization.is_active == True
+        ).first()
 
 organization = CRUDOrganization(Organization)

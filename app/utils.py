@@ -16,3 +16,21 @@ def verify_email(email: str) -> bool:
     if re.match(pattern, email):
         return True
     return False
+
+def extract_email_domain(email: str) -> str:
+    """
+    从邮箱地址中提取域名部分
+    
+    Args:
+        email: 邮箱地址
+        
+    Returns:
+        str: 域名部分，如果邮箱格式无效则返回空字符串
+    """
+    if not verify_email(email):
+        return ""
+    
+    try:
+        return email.split('@')[1].lower()
+    except IndexError:
+        return ""

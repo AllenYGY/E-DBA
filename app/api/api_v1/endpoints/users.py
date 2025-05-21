@@ -318,8 +318,10 @@ async def edit_balance(
     current_user: User = Depends(deps.get_current_active_user),
 ) -> Any:
     """
-    Add user balance
+    Add or deduct user balance
     Need to be one of the following roles: (E-Admin, T-Admin, Senior E-Admin, O-Convener)
+    
+    When deducting money (amount < 0), the balance after deduction must be >= 0
     """
     user = crud.user.get(db, id=user_id)
     if not user:
@@ -328,22 +330,32 @@ async def edit_balance(
             detail="User not found",
         )
     
+    # Check if balance is enough when deducting money
+    if amount < 0 and user.balance + amount < 0:
+        return {
+            "message": "Balance not enough",
+            "user_id": user.id,
+            "amount": amount,
+            "current_balance": user.balance
+        }
+    
     # Edit user balance
     new_balance = user.balance + amount
     user = crud.user.update(db, db_obj=user, obj_in={"balance": new_balance})
     
     # Record log
+    action_type = "Deduct" if amount < 0 else "Add"
     crud.log.create_log(
         db=db,
         user_id=current_user.id,
         organization_id=current_user.organization_id,
         log_type=LogType.PAYMENT,
-        action="Edit user balance",
-        details=f"Admin {current_user.email} edited user {user.email} balance, current balance: {user.balance} yuan"
+        action=f"{action_type} user balance",
+        details=f"Admin {current_user.email} {action_type.lower()}ed user {user.email} balance by {abs(amount)} yuan, current balance: {user.balance} yuan"
     )
     
     return {
-        "message": "Edit user balance successfully",
+        "message": f"{action_type} user balance successfully",
         "user_id": user.id,
         "amount": amount,
         "current_balance": user.balance
